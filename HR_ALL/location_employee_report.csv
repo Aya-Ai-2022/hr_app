@@ -1,0 +1,28 @@
+Region,Country,City,Department,Employee Count,Average Salary
+Europe,United Kingdom,London,Human Resources,1,6500
+Americas,United States of America,Seattle,Retail Sales,0,0
+Americas,United States of America,Seattle,Shareholder Services,0,0
+Americas,United States of America,Seattle,Executive,3,19333.33
+Americas,United States of America,Seattle,IT Support,0,0
+Americas,United States of America,Seattle,Construction,0,0
+Americas,United States of America,Seattle,Government Sales,0,0
+Americas,United States of America,Seattle,Treasury,0,0
+Americas,United States of America,Southlake,IT,5,5760
+Americas,United States of America,Seattle,Contracting,0,0
+Americas,United States of America,Seattle,Control And Credit,0,0
+Americas,United States of America,Seattle,NOC,0,0
+Americas,United States of America,Seattle,Corporate Tax,0,0
+Americas,United States of America,Seattle,IT Helpdesk,0,0
+Americas,United States of America,Seattle,Administration,1,4400
+Americas,United States of America,Seattle,Benefits,0,0
+Americas,United States of America,Seattle,Finance,6,8601.33
+Americas,United States of America,Seattle,Purchasing,6,4150
+Americas,United States of America,South San Francisco,Shipping,45,3475.56
+Americas,United States of America,Seattle,Accounting,2,10154
+Americas,United States of America,Seattle,Operations,0,0
+Americas,United States of America,Seattle,Recruiting,0,0
+Europe,Germany,Munich,Public Relations,1,10000
+Americas,United States of America,Seattle,Payroll,0,0
+Europe,United Kingdom,Oxford,Sales,34,8955.88
+Americas,Canada,Toronto,Marketing,2,9500
+Americas,United States of America,Seattle,Manufacturing,0,0

@@ -1,0 +1,21 @@
+Job ID,Job Title,Department,Total Employees,Avg Salary,Median Salary,Min Salary,Max Salary
+AD_PRES,President,Executive,1,24000,24000,24000,24000
+AD_VP,Administration Vice President,Executive,2,17000,17000,17000,17000
+MK_MAN,Marketing Manager,Marketing,1,13000,13000,13000,13000
+SA_MAN,Sales Manager,Sales,5,12200,12000,10500,14000
+AC_MGR,Accounting Manager,Accounting,1,12008,12008,12008,12008
+FI_MGR,Finance Manager,Finance,1,12008,12008,12008,12008
+PU_MAN,Purchasing Manager,Purchasing,1,11000,11000,11000,11000
+PR_REP,Public Relations Representative,Public Relations,1,10000,10000,10000,10000
+SA_REP,Sales Representative,Sales,29,8396.55,8400,6100,11500
+AC_ACCOUNT,Public Accountant,Accounting,1,8300,8300,8300,8300
+FI_ACCOUNT,Accountant,Finance,5,7920,7800,6900,9000
+ST_MAN,Stock Manager,Shipping,5,7280,7900,5800,8200
+SA_REP,Sales Representative,N/A,1,7000,7000,7000,7000
+HR_REP,Human Resources Representative,Human Resources,1,6500,6500,6500,6500
+MK_REP,Marketing Representative,Marketing,1,6000,6000,6000,6000
+IT_PROG,Programmer,IT,5,5760,4800,4200,9000
+AD_ASST,Administration Assistant,Administration,1,4400,4400,4400,4400
+SH_CLERK,Shipping Clerk,Shipping,20,3215,3100,2500,4200
+ST_CLERK,Stock Clerk,Shipping,20,2785,2700,2100,3600
+PU_CLERK,Purchasing Clerk,Purchasing,5,2780,2800,2500,3100
