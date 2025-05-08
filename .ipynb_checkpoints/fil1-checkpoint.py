@@ -2,341 +2,663 @@ import os
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import streamlit as st
-from datetime import datetime
 
 # --- Configuration ---
 DATA_DIR = "HR_ALL"  # Adjust this to your HR_DIR path
-DATE_FORMAT = "%d-%b-%y"  # Matches '17-JUN-03' from PL/SQL
+DATE_FORMAT = "%d-%b-%y"  # Matches '17-JUN-03' from PL/SQL, adjust if your CSV dates differ
 GIF_PATH = "emp.gif"  # Adjust this to the actual path of your GIF
 
-# --- Color Palette (Light Blue and Navy Theme) ---
 # --- Color Palette (Navy, Purple, Indigo, Magenta Theme) ---
 COLORS = {
-    'background': '#F5F6F5',         # Light grayish background for dashboard (neutral to complement vibrant colors)
-    'sidebar': '#D1C4E9',            # Light purple for sidebar (derived from Purple #6F42C1)
-    'text': '#343A40',               # Navy for primary text (high contrast)
-    'secondary_text': '#9C27B0',     # Lighter magenta for secondary text
-    'navy': '#343A40',               # Primary navy for emphasis
+    'background': '#F5F6F5',         # Light grayish background for dashboard
+    'sidebar': '#D1C4E9',            # Light purple for sidebar
+    'text': '#343A40',               # Navy for primary text
+    'secondary_text': '#5C6BC0',     # Lighter navy for secondary text (e.g., card paragraph)
+    'title_color': '#453299',        # Dark navy for main H1 title
+    'navy': '#343A40',               # Primary navy for emphasis (e.g., subheaders, some graph elements)
     'light_navy': '#5C6BC0',         # Lighter navy for softer elements
-    'purple': '#6F42C1',             # Primary purple for key metrics
-    'light_purple': '#B39DDB',       # Lighter purple for secondary elements
-    'indigo': '#4B0082',             # Primary indigo for high values
-    'light_indigo': '#7E57C2',       # Lighter indigo for mid-range
-    'magenta': '#FF00FF',            # Primary magenta for highlights
-    'soft_magenta': '#F06292',       # Softer magenta for neutral elements
+    'purple': '#6F42C1',             # Primary purple for key metrics and graph elements
+    'light_purple': '#B39DDB',       # Lighter purple for secondary elements or softer graph elements
+    'indigo': '#4B0082',             # Primary indigo for high values in scales or distinct elements
+    'light_indigo': '#7E57C2',       # Lighter indigo for mid-range in scales
+    'magenta': '#FF00FF',            # Primary magenta for highlights (use sparingly)
+    'soft_magenta': '#F06292',       # Softer magenta for less prominent highlights
     'card_bg': '#EDE7F6',            # Very light purple for cards
     'graph_bg': '#FAF9FE',           # Near-white with purple tint for graph backgrounds
+    'button_bg': '#6F42C1',          # Purple for Streamlit buttons
+    'button_text': '#FFFFFF',        # White text for buttons
     # Color sequences for graphs
     'discrete_sequence': ['#343A40', '#6F42C1', '#4B0082', '#FF00FF', '#5C6BC0', '#B39DDB', '#7E57C2', '#F06292'],
-    'continuous_scale': ['#B39DDB', '#6F42C1', '#4B0082'],  # Purple to Indigo for gradients
-    'bar_colors': ['#6F42C1', '#7E57C2', '#343A40'],        # Purple, Light Indigo, Navy for bar graphs
-    'pie_colors': ['#6F42C1', '#343A40', '#FF00FF', '#5C6BC0'],  # Purple, Navy, Magenta, Light Navy
+    'continuous_scale': ['#B39DDB', '#6F42C1', '#4B0082'],  # Light Purple to Purple to Indigo for gradients
+    'bar_colors': ['#6F42C1', '#7E57C2', '#343A40'],        # Purple, Light Indigo, Navy for grouped bar graphs
+    'pie_colors': ['#6F42C1', '#343A40', '#FF00FF', '#5C6BC0', '#B39DDB', '#4B0082'], # Diverse for pie slices
 }
 
-# --- Data Loading Functions ---
+# --- Data Loading and Caching ---
 @st.cache_data
-def load_csv_files(directory):
+def load_csv_files(directory: str) -> dict:
+    """Loads all CSV files from a directory into pandas DataFrames."""
     dataframes = {}
+    if not os.path.exists(directory) or not os.path.isdir(directory):
+        # This error will be caught in main() if directory doesn't exist.
+        # Still good to have a check here if called elsewhere.
+        return dataframes
     for filename in os.listdir(directory):
         if filename.endswith(".csv"):
             filepath = os.path.join(directory, filename)
             try:
                 df = pd.read_csv(filepath)
-                df.columns = [col.strip().lower().replace(" ", "_") for col in df.columns]
-                dataframes[filename[:-4]] = df
+                # Standardize column names
+                df.columns = [str(col).strip().lower().replace(" ", "_") for col in df.columns]
+                dataframes[filename[:-4].lower().replace(" ", "_").replace("-", "_")] = df # Standardize dict keys
             except Exception as e:
                 st.warning(f"Error loading {filename}: {e}")
     return dataframes
 
-# --- Data Cleaning Functions ---
 @st.cache_data
-def clean_dataframe(df, date_cols=None):
-    df.replace(['NULL', ''], pd.NA, inplace=True)
-    for col in df.select_dtypes(include=['object']).columns:
-        df[col] = df[col].str.strip().str.replace('"', '', regex=False)
+def clean_dataframe(df: pd.DataFrame, date_cols: list = None, numeric_cols: list = None) -> pd.DataFrame:
+    """Cleans a DataFrame: handles NA, strips strings, converts dates and numerics."""
+    df_copy = df.copy() # Work on a copy to avoid mutating cached objects inplace
+
+    df_copy.replace(['NULL', 'null', '', 'NA', 'N/A', 'NaN', 'nan'], pd.NA, inplace=True)
+
+    for col in df_copy.select_dtypes(include=['object']).columns:
+        if col in df_copy.columns:
+            df_copy[col] = df_copy[col].astype(str).str.strip().str.replace('"', '', regex=False)
+            df_copy[col].replace(['None', '<NA>'], pd.NA, inplace=True) # Replace string 'None' or '<NA>' after strip
+
     if date_cols:
         for col in date_cols:
-            if col in df.columns:
-                df[col] = pd.to_datetime(df[col], format=DATE_FORMAT, errors='coerce')
-    for col in df.columns:
-        if col in ['employee_count', 'salary', 'avg_salary', 'min_salary', 'max_salary', 'median_salary', 'tenure', 'growth_%', 'turnover_rate_(%)']:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
-    return df
+            if col in df_copy.columns:
+                df_copy[col] = pd.to_datetime(df_copy[col], format=DATE_FORMAT, errors='coerce')
+
+    # Define a more comprehensive list of potential numeric columns likely in HR data
+    default_numeric_cols = [
+        'employee_count', 'salary', 'avg_salary', 'min_salary', 'max_salary',
+        'median_salary', 'tenure', 'growth_%', 'turnover_rate_(%)',
+        'average_salary', 'avg_experience_(years)', 'age', 'performance_rating',
+        'bonus', 'compensation', 'fte' # Full-Time Equivalent
+    ]
+    numeric_cols_to_convert = list(set((numeric_cols or []) + default_numeric_cols))
+
+    for col in numeric_cols_to_convert:
+        if col in df_copy.columns:
+            # Attempt to remove currency symbols or commas before converting
+            if df_copy[col].dtype == 'object':
+                df_copy[col] = df_copy[col].astype(str).str.replace(r'[$,]', '', regex=True)
+            df_copy[col] = pd.to_numeric(df_copy[col], errors='coerce')
+    return df_copy
 
 # --- Visualization Functions ---
-# --- Visualization Functions ---
-def plot_employee_demographics(dfs):
+def plot_employee_demographics(dfs: dict):
     dept_salary_df = dfs.get('department_salary_analysis', pd.DataFrame())
     if dept_salary_df.empty:
-        st.error("Missing 'department_salary_analysis.csv'.")
+        st.warning("Data for 'Department Salary Comparison' (department_salary_analysis.csv) not available.")
         return None
+
+    required_cols = ['department', 'avg_salary', 'min_salary', 'max_salary']
+    for col in required_cols:
+        if col not in dept_salary_df.columns:
+            st.error(f"Missing column '{col}' in department_salary_analysis.csv for demographics plot.")
+            return None
+    numeric_salary_cols = ['avg_salary', 'min_salary', 'max_salary']
+    for col in numeric_salary_cols:
+        if not pd.api.types.is_numeric_dtype(dept_salary_df[col]):
+            try: dept_salary_df[col] = pd.to_numeric(dept_salary_df[col])
+            except ValueError:
+                st.error(f"Column '{col}' in department_salary_analysis.csv must be numeric for demographics plot.")
+                return None
+
     fig = go.Figure()
-    fig.add_trace(go.Bar(x=dept_salary_df['department'], y=dept_salary_df['avg_salary'], name='Avg Salary', marker_color=COLORS['purple'], text=dept_salary_df['avg_salary'].round(0), textposition='auto'))
-    fig.add_trace(go.Bar(x=dept_salary_df['department'], y=dept_salary_df['min_salary'], name='Min Salary', marker_color=COLORS['light_indigo'], text=dept_salary_df['min_salary'], textposition='auto'))
-    fig.add_trace(go.Bar(x=dept_salary_df['department'], y=dept_salary_df['max_salary'], name='Max Salary', marker_color=COLORS['navy'], text=dept_salary_df['max_salary'], textposition='auto'))
-    fig.update_layout(title="Department Salary Comparison", barmode='group', paper_bgcolor=COLORS['graph_bg'], plot_bgcolor=COLORS['graph_bg'], font_color=COLORS['text'], width=1200)
+    fig.add_trace(go.Bar(
+        x=dept_salary_df['department'], y=dept_salary_df['avg_salary'],
+        name='Avg Salary', marker_color=COLORS['purple'],
+        text=dept_salary_df['avg_salary'].round(0).astype(str), textposition='auto'
+    ))
+    fig.add_trace(go.Bar(
+        x=dept_salary_df['department'], y=dept_salary_df['min_salary'],
+        name='Min Salary', marker_color=COLORS['light_indigo'],
+        text=dept_salary_df['min_salary'].round(0).astype(str), textposition='auto'
+    ))
+    fig.add_trace(go.Bar(
+        x=dept_salary_df['department'], y=dept_salary_df['max_salary'],
+        name='Max Salary', marker_color=COLORS['navy'],
+        text=dept_salary_df['max_salary'].round(0).astype(str), textposition='auto'
+    ))
+    fig.update_layout(
+        title_text="Department Salary Comparison", barmode='group',
+        xaxis_title="Department", yaxis_title="Salary (Currency)",
+        paper_bgcolor=COLORS['graph_bg'], plot_bgcolor=COLORS['graph_bg'], font_color=COLORS['text']
+    )
     return fig
 
-def plot_salary_analysis(dfs):
+def plot_salary_analysis(dfs: dict):
     exp_df = dfs.get('job_experience_salary', pd.DataFrame())
     if exp_df.empty:
-        st.error("Missing 'job_experience_salary.csv'.")
+        st.warning("Data for 'Experience vs. Salary' (job_experience_salary.csv) not available.")
         return None
-    fig = px.scatter(exp_df, x='avg_experience_(years)', y='avg_salary', text='job_title', trendline='ols', 
-                     color='avg_salary', color_continuous_scale=COLORS['continuous_scale'], title="Experience vs. Salary")
-    fig.update_traces(textposition='top center')
-    fig.update_layout(paper_bgcolor=COLORS['graph_bg'], plot_bgcolor=COLORS['graph_bg'], font_color=COLORS['text'], width=1200)
+    required_cols = ['avg_experience_(years)', 'avg_salary', 'job_title']
+    if not all(col in exp_df.columns for col in required_cols):
+        st.error(f"Missing required columns in job_experience_salary.csv. Need: {', '.join(required_cols)}")
+        return None
+    for col in ['avg_experience_(years)', 'avg_salary']:
+        if not pd.api.types.is_numeric_dtype(exp_df[col]):
+            try: exp_df[col] = pd.to_numeric(exp_df[col])
+            except ValueError:
+                st.error(f"Column '{col}' in job_experience_salary.csv must be numeric.")
+                return None
+
+    fig = px.scatter(
+        exp_df,
+        x='avg_experience_(years)',
+        y='avg_salary',
+        # text='job_title', # REMOVE or COMMENT OUT this line
+        hover_name='job_title',  # Use hover_name for detailed info on hover
+        # You can add more data to hover using hover_data
+        hover_data={'avg_experience_(years)': ':.1f', 'avg_salary': ':,.0f', 'job_title': False}, # 'job_title': False to avoid duplicating it from hover_name
+        trendline='ols',
+        color='avg_salary',
+        color_continuous_scale=COLORS['continuous_scale'],
+        title="Experience vs. Salary (Hover for Job Title)", # Update title to guide user
+        labels={
+            'avg_experience_(years)': 'Average Experience (Years)',
+            'avg_salary': 'Average Salary (Currency)',
+            # 'job_title': 'Job Title' # No longer directly labeled on points
+        }
+    )
+    # fig.update_traces(textposition='top center') # Not needed if 'text' is removed
+    fig.update_layout(
+        paper_bgcolor=COLORS['graph_bg'], plot_bgcolor=COLORS['graph_bg'], font_color=COLORS['text']
+    )
     return fig
 
-def plot_hiring_trends(dfs):
-    emp_df = dfs.get('all_employees', pd.DataFrame())
+def plot_hiring_trends(dfs: dict):
+    emp_df = dfs.get('all_employees', pd.DataFrame()) # Assuming 'all_employees' is the correct key
     if emp_df.empty or 'hire_date' not in emp_df.columns:
-        st.error("Missing 'all_employees.csv' or 'hire_date' column.")
+        st.warning("Data for 'Hiring Trends' (all_employees.csv with 'hire_date') not available.")
         return None
-    emp_df['hire_year'] = emp_df['hire_date'].dt.year
-    hire_trends = emp_df['hire_year'].value_counts().sort_index().reset_index()
+    if not pd.api.types.is_datetime64_any_dtype(emp_df['hire_date']):
+        try: emp_df['hire_date'] = pd.to_datetime(emp_df['hire_date'])
+        except Exception:
+            st.error("'hire_date' column in all_employees.csv is not in a valid date format for hiring trends.")
+            return None
+    
+    emp_df_filtered = emp_df.dropna(subset=['hire_date'])
+    if emp_df_filtered.empty:
+        st.warning("No valid 'hire_date' data available after attempting to clean for hiring trends.")
+        return None
+
+    emp_df_filtered['hire_year'] = emp_df_filtered['hire_date'].dt.year
+    hire_trends = emp_df_filtered['hire_year'].value_counts().sort_index().reset_index()
     hire_trends.columns = ['year', 'hires']
-    fig = px.line(hire_trends, x='year', y='hires', title="Hiring Trends Over Time", markers=True, text=hire_trends['hires'],
-                  line_shape='linear', color_discrete_sequence=[COLORS['purple']])
+
+    fig = px.line(
+        hire_trends, x='year', y='hires', title="Hiring Trends Over Time",
+        markers=True, text=hire_trends['hires'], line_shape='linear',
+        color_discrete_sequence=[COLORS['purple']],
+        labels={'year': 'Year of Hire', 'hires': 'Number of Hires'}
+    )
     fig.update_traces(textposition='top center')
-    fig.update_layout(xaxis_title="Year", yaxis_title="Number of Hires", paper_bgcolor=COLORS['graph_bg'], plot_bgcolor=COLORS['graph_bg'], font_color=COLORS['text'], width=1200)
+    fig.update_layout(
+        xaxis_title="Year", yaxis_title="Number of Hires",
+        paper_bgcolor=COLORS['graph_bg'], plot_bgcolor=COLORS['graph_bg'], font_color=COLORS['text']
+    )
     return fig
 
-def plot_turnover_analysis(dfs):
+def plot_turnover_analysis(dfs: dict):
     turnover_df = dfs.get('job_turnover_analysis', pd.DataFrame())
     if turnover_df.empty:
-        st.error("Missing 'job_turnover_analysis.csv'.")
+        st.warning("Data for 'Turnover Rate by Job' (job_turnover_analysis.csv) not available.")
         return None
-    turnover_df = turnover_df.sort_values('turnover_rate_(%)', ascending=True)
-    fig = px.bar(turnover_df, y='job_title', x='turnover_rate_(%)', title="Turnover Rate by Job", orientation='h',
-                 text=turnover_df['turnover_rate_(%)'].round(1), color='turnover_rate_(%)', color_continuous_scale=COLORS['continuous_scale'])
+    required_cols = ['job_title', 'turnover_rate_(%)']
+    if not all(col in turnover_df.columns for col in required_cols):
+        st.error(f"Missing required columns in job_turnover_analysis.csv. Need: {', '.join(required_cols)}")
+        return None
+    if not pd.api.types.is_numeric_dtype(turnover_df['turnover_rate_(%)']):
+        try: turnover_df['turnover_rate_(%)'] = pd.to_numeric(turnover_df['turnover_rate_(%)'])
+        except ValueError:
+            st.error("'turnover_rate_(%)' column in job_turnover_analysis.csv must be numeric.")
+            return None
+    
+    turnover_df_sorted = turnover_df.dropna(subset=['turnover_rate_(%)', 'job_title']).sort_values('turnover_rate_(%)', ascending=True)
+    if turnover_df_sorted.empty:
+        st.warning("No valid data to display for turnover analysis after cleaning.")
+        return None
+
+    fig = px.bar(
+        turnover_df_sorted, y='job_title', x='turnover_rate_(%)',
+        title="Turnover Rate by Job Title", orientation='h',
+        text=turnover_df_sorted['turnover_rate_(%)'].apply(lambda x: f"{x:.1f}%" if pd.notnull(x) else ""),
+        color='turnover_rate_(%)', color_continuous_scale=COLORS['continuous_scale'],
+        labels={
+            'job_title': 'Job Title',
+            'turnover_rate_(%)': 'Turnover Rate (%)'
+        }
+    )
     fig.update_traces(textposition='auto')
-    fig.update_layout(xaxis_title="Turnover Rate (%)", yaxis_title="Job Title", paper_bgcolor=COLORS['graph_bg'], plot_bgcolor=COLORS['graph_bg'], font_color=COLORS['text'], width=1200)
+    fig.update_layout(
+        xaxis_title="Turnover Rate (%)", yaxis_title="Job Title",
+        paper_bgcolor=COLORS['graph_bg'], plot_bgcolor=COLORS['graph_bg'], font_color=COLORS['text']
+    )
     return fig
 
-def plot_tenure_distribution(dfs):
-    tenure_df = dfs.get('tenure_comparison', pd.DataFrame())
-    if tenure_df.empty:
-        st.error("Missing 'tenure_comparison.csv'.")
+def plot_tenure_distribution(dfs: dict):
+    tenure_df = dfs.get('tenure_comparison', pd.DataFrame()) # Key for tenure data
+    if tenure_df.empty or 'tenure' not in tenure_df.columns:
+        st.warning("Data for 'Tenure Distribution' (tenure_comparison.csv with 'tenure' column) not available.")
         return None
-    fig = px.histogram(tenure_df, x='tenure', title="Tenure Distribution", nbins=20, histnorm='percent', 
-                       text_auto='.1f', color_discrete_sequence=[COLORS['light_purple']])
-    fig.update_layout(xaxis_title="Tenure (Years)", yaxis_title="Percentage of Employees (%)", 
-                      paper_bgcolor=COLORS['graph_bg'], plot_bgcolor=COLORS['graph_bg'], font_color=COLORS['text'], width=1200)
+    if not pd.api.types.is_numeric_dtype(tenure_df['tenure']):
+        try: tenure_df['tenure'] = pd.to_numeric(tenure_df['tenure'])
+        except ValueError:
+            st.error("'tenure' column in tenure_comparison.csv must be numeric.")
+            return None
+            
+    tenure_df_cleaned = tenure_df.dropna(subset=['tenure'])
+    if tenure_df_cleaned.empty:
+        st.warning("No valid tenure data to display after cleaning.")
+        return None
+
+    fig = px.histogram(
+        tenure_df_cleaned, x='tenure', title="Employee Tenure Distribution", nbins=20,
+        histnorm='percent', text_auto='.1f', color_discrete_sequence=[COLORS['light_purple']],
+        labels={'tenure': 'Tenure (Years)'}
+    )
+    fig.update_layout(
+        xaxis_title="Tenure (Years)", yaxis_title="Percentage of Employees (%)",
+        paper_bgcolor=COLORS['graph_bg'], plot_bgcolor=COLORS['graph_bg'], font_color=COLORS['text']
+    )
     return fig
 
-def plot_salary_distribution(dfs):
+def plot_salary_distribution(dfs: dict):
     salary_dist_df = dfs.get('salary_distribution', pd.DataFrame())
     if salary_dist_df.empty:
-        st.error("Missing 'salary_distribution.csv'.")
+        st.warning("Data for 'Salary Distribution' (salary_distribution.csv) not available.")
         return None
-    salary_dist_df.columns = ['salary_range', 'employee_count']
-    salary_dist_df['employee_count'] = pd.to_numeric(salary_dist_df['employee_count'], errors='coerce')
-    fig = px.pie(salary_dist_df.dropna(subset=['employee_count']), 
-                 names='salary_range', 
-                 values='employee_count', 
-                 hole=0.3, 
-                 title="Salary Distribution",
-                 color_discrete_sequence=COLORS['pie_colors'])
-    fig.update_traces(textinfo='percent+label', textposition='inside')
-    fig.update_layout(paper_bgcolor=COLORS['graph_bg'], plot_bgcolor=COLORS['graph_bg'], font_color=COLORS['text'], width=1200)
+    
+    expected_cols = ['salary_range', 'employee_count']
+    if not all(col in salary_dist_df.columns for col in expected_cols):
+        if len(salary_dist_df.columns) >= 2:
+            st.info("Attempting to use first two columns for salary distribution as 'salary_range' and 'employee_count'.")
+            salary_dist_df.columns = ['salary_range', 'employee_count'] + list(salary_dist_df.columns[2:])
+        else:
+            st.error(f"Salary distribution data needs at least two columns. Expected: {', '.join(expected_cols)}.")
+            return None
+
+    if not pd.api.types.is_numeric_dtype(salary_dist_df['employee_count']):
+        try: salary_dist_df['employee_count'] = pd.to_numeric(salary_dist_df['employee_count'])
+        except ValueError:
+            st.error("'employee_count' column in salary_distribution.csv must be numeric.")
+            return None
+            
+    salary_dist_df_cleaned = salary_dist_df.dropna(subset=['employee_count', 'salary_range'])
+    if salary_dist_df_cleaned.empty:
+        st.warning("No valid data for salary distribution after cleaning.")
+        return None
+        
+    fig = px.pie(
+        salary_dist_df_cleaned, names='salary_range', values='employee_count',
+        hole=0.3, title="Salary Range Distribution",
+        color_discrete_sequence=COLORS['pie_colors']
+    )
+    fig.update_traces(textinfo='percent+label', textposition='inside', insidetextorientation='radial')
+    fig.update_layout(
+        paper_bgcolor=COLORS['graph_bg'], plot_bgcolor=COLORS['graph_bg'], font_color=COLORS['text'],
+        legend_title_text='Salary Range'
+    )
     return fig
 
-def plot_location_report(dfs):
+def plot_location_report(dfs: dict):
     loc_df = dfs.get('location_employee_report', pd.DataFrame())
     if loc_df.empty:
-        st.error("Missing 'location_employee_report.csv'.")
+        st.warning("Data for 'Location Report' (location_employee_report.csv) not available.")
         return None
-    fig = px.scatter(loc_df, x='city', y='average_salary', size='employee_count', color='average_salary', 
-                     color_continuous_scale=COLORS['continuous_scale'], title="Employee Distribution by Location",
-                     text=loc_df['department'], size_max=60)
-    fig.update_traces(textposition='top center')
-    fig.update_layout(paper_bgcolor=COLORS['graph_bg'], plot_bgcolor=COLORS['graph_bg'], font_color=COLORS['text'], width=1200)
+    required_cols = ['city', 'average_salary', 'employee_count']
+    if not all(col in loc_df.columns for col in required_cols):
+        st.error(f"Missing required columns in location_employee_report.csv. Need at least: {', '.join(required_cols)}")
+        return None
+    for col in ['average_salary', 'employee_count']:
+        if not pd.api.types.is_numeric_dtype(loc_df[col]):
+            try: loc_df[col] = pd.to_numeric(loc_df[col])
+            except ValueError:
+                st.error(f"Column '{col}' in location_employee_report.csv must be numeric.")
+                return None
+                
+    loc_df_cleaned = loc_df.dropna(subset=required_cols)
+    if loc_df_cleaned.empty:
+        st.warning("No valid data for location report after cleaning.")
+        return None
+        
+    text_col = 'department' if 'department' in loc_df_cleaned.columns else None
+
+    fig = px.scatter(
+        loc_df_cleaned, x='city', y='average_salary', size='employee_count',
+        color='average_salary', color_continuous_scale=COLORS['continuous_scale'],
+        title="Employee Distribution and Salary by Location",
+        text=text_col, size_max=60,
+        labels={
+            'city': 'City',
+            'average_salary': 'Average Salary (Currency)',
+            'employee_count': 'Number of Employees',
+            'department': 'Department (hover/text)'
+        },
+        hover_name='city'
+    )
+    if text_col:
+        fig.update_traces(textposition='top center')
+    fig.update_layout(
+        xaxis_title="City", yaxis_title="Average Salary (Currency)",
+        paper_bgcolor=COLORS['graph_bg'], plot_bgcolor=COLORS['graph_bg'], font_color=COLORS['text']
+    )
     return fig
 
-def plot_salary_growth(dfs):
+def plot_salary_growth(dfs: dict):
     growth_df = dfs.get('salary_growth', pd.DataFrame())
-    if growth_df.empty:
-        st.error("Missing 'salary_growth.csv'.")
+    if growth_df.empty or 'growth_%' not in growth_df.columns:
+        st.warning("Data for 'Salary Growth' (salary_growth.csv with 'growth_%' column) not available.")
         return None
-    bins = [-float('inf'), -50, 0, 50, float('inf')]
-    labels = ['<-50%', '-50% to 0%', '0% to 50%', '>50%']
-    growth_df['growth_bucket'] = pd.cut(growth_df['growth_%'], bins=bins, labels=labels, include_lowest=True)
-    growth_dist = growth_df['growth_bucket'].value_counts().reindex(labels).fillna(0).reset_index()
+    if not pd.api.types.is_numeric_dtype(growth_df['growth_%']):
+        try: growth_df['growth_%'] = pd.to_numeric(growth_df['growth_%'])
+        except ValueError:
+            st.error("'growth_%' column in salary_growth.csv must be numeric.")
+            return None
+
+    growth_df_cleaned = growth_df.dropna(subset=['growth_%'])
+    if growth_df_cleaned.empty:
+        st.warning("No valid salary growth data after cleaning.")
+        return None
+        
+    bins = [-float('inf'), -50.0001, -0.0001, 0.0001, 50.0001, float('inf')]
+    labels = ['Decrease >50%', 'Decrease 0-50%', 'No Change', 'Increase 0-50%', 'Increase >50%']
+    growth_df_cleaned['growth_bucket'] = pd.cut(growth_df_cleaned['growth_%'], bins=bins, labels=labels, include_lowest=True, right=True)
+    
+    growth_dist = growth_df_cleaned['growth_bucket'].value_counts().reindex(labels).fillna(0).reset_index()
     growth_dist.columns = ['growth_range', 'count']
-    colors = [COLORS['navy'] if '<' in r else COLORS['light_purple'] if '>' in r else COLORS['indigo'] for r in growth_dist['growth_range']]
-    fig = px.bar(growth_dist, x='growth_range', y='count', title="Salary Growth Distribution",
-                 text=growth_dist['count'], color=growth_dist['growth_range'], color_discrete_sequence=colors)
-    fig.update_traces(textposition='auto')
-    fig.update_layout(xaxis_title="Growth Range (%)", yaxis_title="Number of Employees", 
-                      paper_bgcolor=COLORS['graph_bg'], plot_bgcolor=COLORS['graph_bg'], font_color=COLORS['text'], width=1200, showlegend=False)
+
+    color_map = {
+        'Decrease >50%': COLORS['navy'], 'Decrease 0-50%': COLORS['light_navy'],
+        'No Change': COLORS['light_purple'],
+        'Increase 0-50%': COLORS['purple'], 'Increase >50%': COLORS['indigo']
+    }
+
+    fig = px.bar(
+        growth_dist, x='growth_range', y='count',
+        title="Distribution of Salary Growth Percentage",
+        text='count', color='growth_range', color_discrete_map=color_map,
+        labels={'growth_range': 'Salary Growth Range (%)', 'count': 'Number of Employees'}
+    )
+    fig.update_traces(textposition='outside')
+    fig.update_layout(
+        xaxis_title="Growth Range (%)", yaxis_title="Number of Employees",
+        paper_bgcolor=COLORS['graph_bg'], plot_bgcolor=COLORS['graph_bg'], font_color=COLORS['text'],
+        showlegend=False
+    )
     return fig
 
-def plot_top_salaries(dfs):
+def plot_top_salaries(dfs: dict):
     top_df = dfs.get('top_salaries', pd.DataFrame())
     if top_df.empty:
-        st.error("Missing 'top_salaries.csv'.")
+        st.warning("Data for 'Top Salaries' (top_salaries.csv) not available.")
         return None
-    top_df = top_df.sort_values('salary', ascending=False)
-    fig = px.bar(top_df, x='name', y='salary', title="Top Salaries", text=top_df['salary'], 
-                 color='salary', color_continuous_scale=COLORS['continuous_scale'])
-    fig.update_traces(textposition='auto')
-    fig.update_layout(xaxis_title="Employee", yaxis_title="Salary", paper_bgcolor=COLORS['graph_bg'], plot_bgcolor=COLORS['graph_bg'], font_color=COLORS['text'], width=1200)
+    required_cols = ['name', 'salary']
+    if not all(col in top_df.columns for col in required_cols):
+        st.error(f"Missing required columns in top_salaries.csv. Need: {', '.join(required_cols)}")
+        return None
+    if not pd.api.types.is_numeric_dtype(top_df['salary']):
+        try: top_df['salary'] = pd.to_numeric(top_df['salary'])
+        except ValueError:
+            st.error("'salary' column in top_salaries.csv must be numeric.")
+            return None
+            
+    top_df_cleaned = top_df.dropna(subset=['name', 'salary'])
+    if top_df_cleaned.empty:
+        st.warning("No valid data for top salaries after cleaning.")
+        return None
+        
+    top_df_sorted = top_df_cleaned.sort_values('salary', ascending=False).head(15)
+
+    fig = px.bar(
+        top_df_sorted, x='name', y='salary', title="Top 15 Employee Salaries",
+        text=top_df_sorted['salary'].apply(lambda x: f"${x:,.0f}" if pd.notnull(x) else "N/A"),
+        color='salary', color_continuous_scale=COLORS['continuous_scale'],
+        labels={'name': 'Employee Name', 'salary': 'Salary (Currency)'}
+    )
+    fig.update_traces(textposition='outside')
+    fig.update_layout(
+        xaxis_title="Employee", yaxis_title="Salary (Currency)",
+        paper_bgcolor=COLORS['graph_bg'], plot_bgcolor=COLORS['graph_bg'], font_color=COLORS['text'],
+        xaxis_tickangle=-45
+    )
     return fig
 
 # --- Main Streamlit App ---
 def main():
-    st.markdown("""
+    st.set_page_config(layout="wide", page_title="HR Workforce Dynamics Dashboard")
+
+    st.markdown(f"""
     <style>
-    .main {
-        background-color: #E6F0FA;
-        color: #1E3A8A;
-    }
-    .sidebar .sidebar-content {
-        background-color: #B3CDE0;
-    }
-    h1, h2, h3 {
-        color: #1E3A8A;
-    }
-    p {
-        color: #60A5FA;
-    }
-    .stButton>button {
-        background-color: #3B82F6;
-        color: #FFFFFF;
-    }
-    .card {
-        background-color: #DCE7F5;
-        padding: 15px;
-        border-radius: 10px;
-        margin: 10px 0;
-        text-align: center;
+    /* Main app background */
+    .main .block-container {{
+        background-color: {COLORS['background']};
+        padding-top: 2rem; padding-bottom: 3rem;
+        padding-left: 2rem; padding-right: 2rem;
+    }}
+    /* Sidebar styling */
+    [data-testid="stSidebar"] {{ /* More robust selector for sidebar */
+        background-color: {COLORS['sidebar']};
+    }}
+    /* Text styling */
+    h1 {{ color: {COLORS['title_color']}; }}
+    h2, h3 {{ color: {COLORS['navy']}; }} /* Subheader colors */
+    p, .stMarkdown, div[data-testid="stText"], li {{
+        color: {COLORS['text']};
+    }}
+    /* Button styling */
+    .stButton>button {{
+        background-color: {COLORS['button_bg']}; color: {COLORS['button_text']};
+        border-radius: 5px; border: none;
+    }}
+    .stButton>button:hover {{
+        background-color: {COLORS['purple']}; opacity: 0.8;
+    }}
+    /* Card styling for Home page */
+    .card {{
+        background-color: {COLORS['card_bg']}; padding: 20px;
+        border-radius: 10px; margin: 10px 0; text-align: center;
         box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-    }
-    .card h3 {
-        margin: 0;
-        font-size: 24px;
-        color: #1E3A8A;
-    }
-    .card p {
-        margin: 5px 0 0;
-        font-size: 16px;
-        color: #60A5FA;
-    }
+        border: 1px solid {COLORS['light_purple']}; height: 150px;
+        display: flex; flex-direction: column;
+        justify-content: center; align-items: center;
+    }}
+    .card h3 {{ /* Metric value */
+        margin: 0 0 5px 0; font-size: 26px; /* Slightly adjusted font size */
+        color: {COLORS['purple']}; font-weight: bold;
+    }}
+    .card p {{ /* Metric label */
+        margin: 0; font-size: 15px; color: {COLORS['secondary_text']};
+    }}
+    /* GIF container */
+    
+      .gif-container {{
+        display: flex;
+        justify-content: center;
+        margin-bottom: 20px;
+    }}
     </style>
     """, unsafe_allow_html=True)
 
     st.sidebar.title("HR Dashboard Navigation")
-    page = st.sidebar.radio("Select Visualization", ["Home", "Demographics", "Salary", "Hiring", "Turnover", "Tenure", "Salary Distribution", "Location", "Salary Growth", "Top Salaries"])
+    page_options = ["Home", "Demographics", "Salary Analysis", "Hiring Trends", "Turnover Analysis",
+                    "Tenure Distribution", "Salary Distribution", "Location Report",
+                    "Salary Growth", "Top Salaries"]
+    page = st.sidebar.radio("Select Visualization:", page_options)
 
-    dfs = load_csv_files(DATA_DIR)
-    if not dfs:
-        st.error("No CSV files found in the directory.")
+    # Load and clean data
+    if not os.path.exists(DATA_DIR) or not os.path.isdir(DATA_DIR):
+        st.error(f"Error: Data directory '{DATA_DIR}' not found. Please create it and add your CSV files, or update the DATA_DIR path in the script.")
+        st.info("The dashboard requires CSV files in this directory to function.")
+        return # Stop execution if data directory is invalid
+
+    raw_dfs = load_csv_files(DATA_DIR)
+    if not raw_dfs:
+        st.error(f"No CSV files were found or loaded from the directory: '{DATA_DIR}'.")
+        st.info("Please ensure your CSV files are present in the specified directory.")
         return
+
+    dfs = {}
+    date_cols_to_clean = ['hire_date', 'start_date', 'end_date', 'date_of_birth', 'exit_date', 'last_promotion_date']
+    for name, df_raw in raw_dfs.items():
+        dfs[name] = clean_dataframe(df_raw, date_cols=date_cols_to_clean)
+
+    st.markdown(f"<h1 style='text-align: center; color: {COLORS['title_color']}; margin-bottom: 1rem;'>{page} - HR Workforce Dynamics</h1>", unsafe_allow_html=True)
     
-    date_cols = ['hire_date', 'start_date', 'end_date']
-    for name, df in dfs.items():
-        dfs[name] = clean_dataframe(df, date_cols=date_cols)
+    if page != "Home": # Add a thematic break for non-home pages for visual separation
+        st.markdown("---")
 
-    dark_navy_color = "#453299"  # Hex code for dark navy
-
-    st.markdown(f"<h1 style='color: {dark_navy_color};'>HR Workforce Dynamics Dashboard</h1>", unsafe_allow_html=True)
     if page == "Home":
-        # Display GIF centered above the cards
         if os.path.exists(GIF_PATH):
-            st.markdown('<div class="gif-container">', unsafe_allow_html=True)
-            st.image(GIF_PATH, width=550)  # Adjust width as needed
+            st.markdown('<div class="gif-container",use_column_width="auto">', unsafe_allow_html=True)
+            # Increase the width here for a wider GIF
+            st.image(GIF_PATH, width=650) # Example: Changed from 400 to 650
             st.markdown('</div>', unsafe_allow_html=True)
+            
         else:
-            st.warning(f"GIF not found at {GIF_PATH}. Please check the file path.")
+            st.sidebar.warning(f"HR GIF not found at {GIF_PATH}.")
 
-    if page == "Home":
-        st.markdown("### Workforce Insights")
-        total_employees = len(dfs.get('all_employees', pd.DataFrame()))
-        max_salary = dfs.get('job_salary_statistics', pd.DataFrame())['max_salary'].max()
-        top_dept = dfs.get('department_salary_analysis', pd.DataFrame()).sort_values('employee_count', ascending=False).iloc[0]['department']
-        turnover_high = dfs.get('job_turnover_analysis', pd.DataFrame()).sort_values('turnover_rate_(%)', ascending=False).iloc[0]['job_title']
-        avg_tenure = dfs.get('tenure_comparison', pd.DataFrame())['tenure'].mean()
-        top_location = dfs.get('location_employee_report', pd.DataFrame()).sort_values('employee_count', ascending=False).iloc[0]['region']
+        st.markdown("### Key Workforce Metrics")
 
-        # Two rows of two columns for four cards
+        all_employees_df = dfs.get('all_employees', pd.DataFrame())
+        job_salary_stats_df = dfs.get('job_salary_statistics', pd.DataFrame()) # Assumes a file with this name and max_salary col
+        dept_salary_analysis_df = dfs.get('department_salary_analysis', pd.DataFrame())
+        job_turnover_analysis_df = dfs.get('job_turnover_analysis', pd.DataFrame())
+        tenure_df = dfs.get('tenure_comparison', pd.DataFrame()) # Or 'all_employees' if tenure is calculated from hire_date
+        loc_report_df = dfs.get('location_employee_report', pd.DataFrame())
+
+        total_employees = len(all_employees_df) if not all_employees_df.empty else "N/A"
+        
+        max_salary_val = "N/A"
+        if not job_salary_stats_df.empty and 'max_salary' in job_salary_stats_df.columns:
+            max_val = job_salary_stats_df['max_salary'].max()
+            max_salary_val = f"${max_val:,.0f}" if pd.notnull(max_val) else "N/A"
+        elif not all_employees_df.empty and 'salary' in all_employees_df.columns: # Fallback to all_employees salary
+             max_val = all_employees_df['salary'].max()
+             max_salary_val = f"${max_val:,.0f}" if pd.notnull(max_val) else "N/A"
+
+
+        top_dept = "N/A"
+        if not dept_salary_analysis_df.empty and 'department' in dept_salary_analysis_df.columns and 'employee_count' in dept_salary_analysis_df.columns:
+            top_dept_series = dept_salary_analysis_df.sort_values('employee_count', ascending=False)
+            if not top_dept_series.empty: top_dept = top_dept_series.iloc[0]['department']
+        elif not all_employees_df.empty and 'department' in all_employees_df.columns: # Fallback
+            top_dept = all_employees_df['department'].mode()[0] if not all_employees_df['department'].mode().empty else "N/A"
+
+
+        turnover_high_role = "N/A"
+        if not job_turnover_analysis_df.empty and 'job_title' in job_turnover_analysis_df.columns and 'turnover_rate_(%)' in job_turnover_analysis_df.columns:
+            turnover_series = job_turnover_analysis_df.sort_values('turnover_rate_(%)', ascending=False)
+            if not turnover_series.empty: turnover_high_role = turnover_series.iloc[0]['job_title']
+
+        avg_tenure_val = "N/A"
+        if not tenure_df.empty and 'tenure' in tenure_df.columns:
+            mean_tenure = tenure_df['tenure'].mean()
+            avg_tenure_val = f"{mean_tenure:.1f} Yrs" if pd.notnull(mean_tenure) else "N/A"
+        elif not all_employees_df.empty and 'hire_date' in all_employees_df.columns: # Fallback: Calculate tenure if 'hire_date' exists
+            if pd.api.types.is_datetime64_any_dtype(all_employees_df['hire_date']):
+                current_date = pd.to_datetime("today") # Using current date for tenure calculation
+                all_employees_df['calculated_tenure'] = (current_date - all_employees_df['hire_date']).dt.days / 365.25
+                mean_tenure = all_employees_df['calculated_tenure'].mean()
+                avg_tenure_val = f"{mean_tenure:.1f} Yrs" if pd.notnull(mean_tenure) else "N/A"
+
+
+        top_location = "N/A"
+        if not loc_report_df.empty and 'employee_count' in loc_report_df.columns:
+            loc_col_options = ['city', 'region', 'location_name'] # Check for common location column names
+            loc_col_to_use = next((col for col in loc_col_options if col in loc_report_df.columns), None)
+            if loc_col_to_use:
+                top_loc_series = loc_report_df.sort_values('employee_count', ascending=False)
+                if not top_loc_series.empty: top_location = top_loc_series.iloc[0][loc_col_to_use]
+        elif not all_employees_df.empty : # Fallback
+             loc_col_options = ['city', 'region', 'location']
+             loc_col_to_use = next((col for col in loc_col_options if col in all_employees_df.columns), None)
+             if loc_col_to_use:
+                top_location = all_employees_df[loc_col_to_use].mode()[0] if not all_employees_df[loc_col_to_use].mode().empty else "N/A"
+
+
         col1, col2 = st.columns(2)
         with col1:
             st.markdown(f'<div class="card"><h3>{total_employees}</h3><p>Total Employees</p></div>', unsafe_allow_html=True)
             st.markdown(f'<div class="card"><h3>{top_dept}</h3><p>Largest Department</p></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="card"><h3>{avg_tenure_val}</h3><p>Average Tenure</p></div>', unsafe_allow_html=True)
         with col2:
-            st.markdown(f'<div class="card"><h3>${max_salary:,.0f}</h3><p>Highest Salary</p></div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="card"><h3>{top_location}</h3><p>Top Region</p></div>', unsafe_allow_html=True)
-        col3, col4 = st.columns(2)
-        with col3:
-            st.markdown(f'<div class="card"><h3>{turnover_high}</h3><p>Highest Turnover Role</p></div>', unsafe_allow_html=True)
-        with col4:
-            st.markdown(f'<div class="card"><h3>{avg_tenure:.1f} Years</h3><p>Average Tenure</p></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="card"><h3>{max_salary_val}</h3><p>Max Documented Salary</p></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="card"><h3>{turnover_high_role}</h3><p>Highest Turnover Role</p></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="card"><h3>{top_location}</h3><p>Top Employee Location</p></div>', unsafe_allow_html=True)
 
     elif page == "Demographics":
-        st.subheader("Department Salary Comparison")
-        st.markdown("Compare salary metrics across departments.")
-        fig1 = plot_employee_demographics(dfs)
-        if fig1:
-            st.plotly_chart(fig1, use_container_width=True)
+        st.subheader("Department Salary Metrics")
+        st.markdown("Compare average, minimum, and maximum salaries across different departments.")
+        fig = plot_employee_demographics(dfs)
+        if fig: st.plotly_chart(fig, use_container_width=True)
+        else: st.info("No data available to display the demographics chart.")
 
-    elif page == "Salary":
-        st.subheader("Experience vs. Salary")
-        st.markdown("Does experience correlate with higher pay?")
-        fig2 = plot_salary_analysis(dfs)
-        if fig2:
-            st.plotly_chart(fig2, use_container_width=True)
+    elif page == "Salary Analysis":
+        st.subheader("Experience vs. Salary Analysis")
+        st.markdown("Explore the correlation between average years of experience and average salary, with a trendline indicating the general relationship.")
+        fig = plot_salary_analysis(dfs)
+        if fig: st.plotly_chart(fig, use_container_width=True)
+        else: st.info("No data available to display the salary analysis chart.")
 
-    elif page == "Hiring":
-        st.subheader("Hiring Trends")
-        st.markdown("When did we hire our workforce?")
-        fig3 = plot_hiring_trends(dfs)
-        if fig3:
-            st.plotly_chart(fig3, use_container_width=True)
+    elif page == "Hiring Trends":
+        st.subheader("Annual Hiring Trends")
+        st.markdown("Visualize the number of new hires per year to understand recruitment patterns over time.")
+        fig = plot_hiring_trends(dfs)
+        if fig: st.plotly_chart(fig, use_container_width=True)
+        else: st.info("No data available to display the hiring trends chart.")
 
-    elif page == "Turnover":
-        st.subheader("Turnover Rate by Job")
-        st.markdown("Which roles have the highest turnover?")
-        fig4 = plot_turnover_analysis(dfs)
-        if fig4:
-            st.plotly_chart(fig4, use_container_width=True)
+    elif page == "Turnover Analysis":
+        st.subheader("Job Title Turnover Rates")
+        st.markdown("Identify which job titles experience the highest and lowest employee turnover rates.")
+        fig = plot_turnover_analysis(dfs)
+        if fig: st.plotly_chart(fig, use_container_width=True)
+        else: st.info("No data available to display the turnover analysis chart.")
 
-    elif page == "Tenure":
-        st.subheader("Tenure Distribution")
-        st.markdown("How long do employees stay with us?")
-        fig5 = plot_tenure_distribution(dfs)
-        if fig5:
-            st.plotly_chart(fig5, use_container_width=True)
+    elif page == "Tenure Distribution":
+        st.subheader("Employee Tenure Distribution")
+        st.markdown("See the distribution of employee tenure in years, showing how long employees tend to stay with the company.")
+        fig = plot_tenure_distribution(dfs)
+        if fig: st.plotly_chart(fig, use_container_width=True)
+        else: st.info("No data available to display the tenure distribution chart.")
 
     elif page == "Salary Distribution":
-        st.subheader("Salary Distribution")
-        st.markdown("What’s the breakdown of salary ranges?")
-        fig6 = plot_salary_distribution(dfs)
-        if fig6:
-            st.plotly_chart(fig6, use_container_width=True)
+        st.subheader("Salary Range Distribution")
+        st.markdown("Understand the proportion of employees falling into different salary ranges.")
+        fig = plot_salary_distribution(dfs)
+        if fig: st.plotly_chart(fig, use_container_width=True)
+        else: st.info("No data available to display the salary distribution chart.")
 
-    elif page == "Location":
-        st.subheader("Employee Distribution by Location")
-        st.markdown("Where are our employees based?")
-        fig7 = plot_location_report(dfs)
-        if fig7:
-            st.plotly_chart(fig7, use_container_width=True)
+    elif page == "Location Report":
+        st.subheader("Employee Distribution and Salary by Location")
+        st.markdown("Visualize employee counts and average salaries across various company locations or cities.")
+        fig = plot_location_report(dfs)
+        if fig: st.plotly_chart(fig, use_container_width=True)
+        else: st.info("No data available to display the location report chart.")
 
     elif page == "Salary Growth":
-        st.subheader("Salary Growth Distribution")
-        st.markdown("How is salary growth distributed across employees? (First vs. Current)")
-        fig8 = plot_salary_growth(dfs)
-        if fig8:
-            st.plotly_chart(fig8, use_container_width=True)
+        st.subheader("Salary Growth Percentage Distribution")
+        st.markdown("Analyze the distribution of salary growth percentages experienced by employees (e.g., comparing first vs. current salary).")
+        fig = plot_salary_growth(dfs)
+        if fig: st.plotly_chart(fig, use_container_width=True)
+        else: st.info("No data available to display the salary growth chart.")
 
     elif page == "Top Salaries":
-        st.subheader("Top Salaries")
-        st.markdown("Who are our top earners?")
-        fig9 = plot_top_salaries(dfs)
-        if fig9:
-            st.plotly_chart(fig9, use_container_width=True)
+        st.subheader("Top Employee Salaries")
+        st.markdown("Display a list of the top-earning employees in the organization.")
+        fig = plot_top_salaries(dfs)
+        if fig: st.plotly_chart(fig, use_container_width=True)
+        else: st.info("No data available to display the top salaries chart.")
+
+    st.sidebar.markdown("---")
+    st.sidebar.info(f"Last data refresh: {pd.Timestamp('today').strftime('%Y-%m-%d %H:%M:%S')}") # Using pd.Timestamp for current time
 
 if __name__ == "__main__":
     main()
