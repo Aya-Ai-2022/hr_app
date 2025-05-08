@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
-
+import statsmodels.api as sm
 # --- Configuration ---
 DATA_DIR = "HR_ALL"  # Adjust this to your HR_DIR path
 DATE_FORMAT = "%d-%b-%y"  # Matches '17-JUN-03' from PL/SQL, adjust if your CSV dates differ
@@ -144,34 +144,42 @@ def plot_salary_analysis(dfs: dict):
         return None
     for col in ['avg_experience_(years)', 'avg_salary']:
         if not pd.api.types.is_numeric_dtype(exp_df[col]):
-            try: exp_df[col] = pd.to_numeric(exp_df[col])
+            try:
+                exp_df[col] = pd.to_numeric(exp_df[col])
             except ValueError:
                 st.error(f"Column '{col}' in job_experience_salary.csv must be numeric.")
                 return None
+
+    trendline_arg = 'ols'
+    try:
+        # This import is usually triggered by plotly when 'ols' is used.
+        # We can preemptively check or let plotly handle it and catch a broader error,
+        # but explicitly checking can give a more specific message.
+        import statsmodels.api # Try to import to see if it's available
+    except ImportError:
+        trendline_arg = None # Set trendline to None if statsmodels is not found
+        st.info("`statsmodels` library not found. Plotting Experience vs. Salary without OLS trendline. To enable trendline, please install statsmodels (`pip install statsmodels`).")
 
     fig = px.scatter(
         exp_df,
         x='avg_experience_(years)',
         y='avg_salary',
-        # text='job_title', # REMOVE or COMMENT OUT this line
-        hover_name='job_title',  # Use hover_name for detailed info on hover
-        # You can add more data to hover using hover_data
-        hover_data={'avg_experience_(years)': ':.1f', 'avg_salary': ':,.0f', 'job_title': False}, # 'job_title': False to avoid duplicating it from hover_name
-        trendline='ols',
+        hover_name='job_title',
+        hover_data={'avg_experience_(years)': ':.1f', 'avg_salary': ':,.0f', 'job_title': False},
+        trendline=trendline_arg, # Use the determined trendline_arg
         color='avg_salary',
         color_continuous_scale=COLORS['continuous_scale'],
-        title="Experience vs. Salary (Hover for Job Title)", # Update title to guide user
+        title="Experience vs. Salary" + (" (Hover for Job Title)" if trendline_arg else " (Hover for Job Title - Trendline disabled)"),
         labels={
             'avg_experience_(years)': 'Average Experience (Years)',
             'avg_salary': 'Average Salary (Currency)',
-            # 'job_title': 'Job Title' # No longer directly labeled on points
         }
     )
-    # fig.update_traces(textposition='top center') # Not needed if 'text' is removed
     fig.update_layout(
         paper_bgcolor=COLORS['graph_bg'], plot_bgcolor=COLORS['graph_bg'], font_color=COLORS['text']
     )
     return fig
+
 
 def plot_hiring_trends(dfs: dict):
     emp_df = dfs.get('all_employees', pd.DataFrame()) # Assuming 'all_employees' is the correct key
