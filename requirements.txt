@@ -1,7 +1,5 @@
 pandas
 plotly
 streamlit
-
-statsmodels>=0.14.0
-scipy>=1.10.0
-numpy>=1.24.0
+scipy<=1.15.3 
+statsmodels==0.14.4
