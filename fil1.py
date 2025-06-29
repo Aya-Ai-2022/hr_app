@@ -4,37 +4,40 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 import statsmodels.api as sm
-# --- Configuration ---
-DATA_DIR = "HR_ALL"  # Adjust this to your HR_DIR path
-DATE_FORMAT = "%d-%b-%y"  # Matches '17-JUN-03' from PL/SQL, adjust if your CSV dates differ
-GIF_PATH = "emp.gif"  # Adjust this to the actual path of your GIF
+import os
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+import streamlit as st
+import statsmodels.api 
 
-# --- Color Palette (Navy, Purple, Indigo, Magenta Theme) ---
+DATA_DIR = "HR_ALL"
+DATE_FORMAT = "%d-%b-%y"
+GIF_PATH = "emp.gif"
+
 COLORS = {
-    'background': '#F5F6F5',         # Light grayish background for dashboard
-    'sidebar': '#D1C4E9',            # Light purple for sidebar
-    'text': '#343A40',               # Navy for primary text
-    'secondary_text': '#5C6BC0',     # Lighter navy for secondary text (e.g., card paragraph)
-    'title_color': '#453299',        # Dark navy for main H1 title
-    'navy': '#343A40',               # Primary navy for emphasis (e.g., subheaders, some graph elements)
-    'light_navy': '#5C6BC0',         # Lighter navy for softer elements
-    'purple': '#6F42C1',             # Primary purple for key metrics and graph elements
-    'light_purple': '#B39DDB',       # Lighter purple for secondary elements or softer graph elements
-    'indigo': '#4B0082',             # Primary indigo for high values in scales or distinct elements
-    'light_indigo': '#7E57C2',       # Lighter indigo for mid-range in scales
-    'magenta': '#FF00FF',            # Primary magenta for highlights (use sparingly)
-    'soft_magenta': '#F06292',       # Softer magenta for less prominent highlights
-    'card_bg': '#EDE7F6',            # Very light purple for cards
-    'graph_bg': '#FAF9FE',           # Near-white with purple tint for graph backgrounds
-    'button_bg': '#6F42C1',          # Purple for Streamlit buttons
-    'button_text': '#FFFFFF',        # White text for buttons
-    # Color sequences for graphs
-    'discrete_sequence': ['#343A40', '#6F42C1', '#4B0082', '#FF00FF', '#5C6BC0', '#B39DDB', '#7E57C2', '#F06292'],
-    'continuous_scale': ['#B39DDB', '#6F42C1', '#4B0082'],  # Light Purple to Purple to Indigo for gradients
-    'bar_colors': ['#6F42C1', '#7E57C2', '#343A40'],        # Purple, Light Indigo, Navy for grouped bar graphs
-    'pie_colors': ['#6F42C1', '#343A40', '#FF00FF', '#5C6BC0', '#B39DDB', '#4B0082'], # Diverse for pie slices
+ 'background': '#F5F6F5',
+ 'sidebar': '#D1C4E9',
+ 'text': '#343A40',
+ 'secondary_text': '#5C6BC0',
+ 'title_color': '#453299',
+ 'navy': '#343A40',
+ 'light_navy': '#5C6BC0',
+ 'purple': '#6F42C1',
+ 'light_purple': '#B39DDB',
+ 'indigo': '#4B0082',
+ 'light_indigo': '#7E57C2',
+ 'magenta': '#FF00FF',
+ 'soft_magenta': '#F06292',
+ 'card_bg': '#EDE7F6',
+ 'graph_bg': '#FAF9FE',
+ 'button_bg': '#6F42C1',
+ 'button_text': '#FFFFFF',
+ 'discrete_sequence': ['#343A40', '#6F42C1', '#4B0082', '#FF00FF', '#5C6BC0', '#B39DDB', '#7E57C2', '#F06292'],
+ 'continuous_scale': ['#B39DDB', '#6F42C1', '#4B0082'],
+ 'bar_colors': ['#6F42C1', '#7E57C2', '#343A40'],
+ 'pie_colors': ['#6F42C1', '#343A40', '#FF00FF', '#5C6BC0', '#B39DDB', '#4B0082'],
 }
-
 # --- Data Loading and Caching ---
 @st.cache_data
 def load_csv_files(directory: str) -> dict:
@@ -152,9 +155,7 @@ def plot_salary_analysis(dfs: dict):
 
     trendline_arg = 'ols'
     try:
-        # This import is usually triggered by plotly when 'ols' is used.
-        # We can preemptively check or let plotly handle it and catch a broader error,
-        # but explicitly checking can give a more specific message.
+  
         import statsmodels.api # Try to import to see if it's available
     except ImportError:
         trendline_arg = None # Set trendline to None if statsmodels is not found
@@ -304,16 +305,35 @@ def plot_salary_distribution(dfs: dict):
         st.warning("No valid data for salary distribution after cleaning.")
         return None
         
-    fig = px.pie(
-        salary_dist_df_cleaned, names='salary_range', values='employee_count',
-        hole=0.3, title="Salary Range Distribution",
-        color_discrete_sequence=COLORS['pie_colors']
+    # Sort the data by salary range for better visualization
+    salary_dist_df_cleaned = salary_dist_df_cleaned.sort_values('employee_count', ascending=False)
+    
+    
+    fig = px.bar(
+        salary_dist_df_cleaned, 
+        x='salary_range', 
+        y='employee_count',
+        title="Salary Range Distribution",
+        color='salary_range',
+        color_discrete_sequence=COLORS['pie_colors'],
+        text='employee_count'
     )
-    fig.update_traces(textinfo='percent+label', textposition='inside', insidetextorientation='radial')
+    
+    fig.update_traces(texttemplate='%{text}', textposition='outside')
     fig.update_layout(
-        paper_bgcolor=COLORS['graph_bg'], plot_bgcolor=COLORS['graph_bg'], font_color=COLORS['text'],
-        legend_title_text='Salary Range'
+        paper_bgcolor=COLORS['graph_bg'], 
+        plot_bgcolor=COLORS['graph_bg'], 
+        font_color=COLORS['text'],
+        xaxis_title="Salary Range",
+        yaxis_title="Number of Employees",
+        showlegend=False,
+        xaxis={'categoryorder': 'total descending'}  # Sort bars by value
     )
+    
+    # Rotate x-axis labels if needed
+    if len(salary_dist_df_cleaned) > 5:
+        fig.update_layout(xaxis_tickangle=-45)
+    
     return fig
 
 def plot_location_report(dfs: dict):
@@ -439,7 +459,7 @@ def plot_top_salaries(dfs: dict):
     )
     return fig
 
-# --- Main Streamlit App ---
+
 def main():
     st.set_page_config(layout="wide", page_title="HR Workforce Dynamics Dashboard")
 
