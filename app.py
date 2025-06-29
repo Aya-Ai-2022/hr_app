@@ -13,7 +13,7 @@ import statsmodels.api
 
 DATA_DIR = "HR_ALL"
 DATE_FORMAT = "%d-%b-%y"
-GIF_PATH = "emp.gif"
+GIF_PATH = "assests/emp.gif"
 
 COLORS = {
  'background': '#F5F6F5',
