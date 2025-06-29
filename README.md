@@ -56,7 +56,7 @@ hr-workforce-dashboard/
 
 ### Prerequisites
 - Oracle Database (for PL/SQL execution)
-- Python 3.9+
+- Python +3.12
 - Streamlit, Pandas, Plotly, PyArrow (`pip install -r requirements.txt`)
 
 ### Installation
@@ -87,7 +87,7 @@ hr-workforce-dashboard/
 
 
 ## 📊 Demo 
-[dashboard](https://aya-hr-app-dashboard.streamlit.app/)
+[dashboard](https://aya-hr-dashboard-app.streamlit.app/)
 
 
 
